@@ -2,393 +2,601 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+    <meta name="theme-color" content="#05070f">
     <title>Asistente de Voz IA — Monitoreo de Incendios</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-primary: #070d1e;
-            --bg-card: #0f1a36;
-            --border-color: #1e2c52;
-            --accent-orange: #ff6b35;
-            --accent-flame: #f97316;
-            --accent-glow: rgba(249, 115, 22, 0.4);
-            --accent-green: #10b981;
-            --text-primary: #f8fafc;
-            --text-muted: #94a3b8;
-            --pulse-size: 190px;
+            --bg-0: #05070f;
+            --bg-1: #0a0e1c;
+            --surface: rgba(255, 255, 255, 0.045);
+            --surface-strong: rgba(255, 255, 255, 0.07);
+            --hairline: rgba(255, 255, 255, 0.09);
+            --hairline-strong: rgba(255, 255, 255, 0.16);
+            --text-primary: #f4f6fb;
+            --text-soft: #c3cad9;
+            --text-muted: #7b8398;
+
+            /* Acentos por estado */
+            --idle-a: #6366f1;
+            --idle-b: #22d3ee;
+            --listen-a: #ff7a3d;
+            --listen-b: #ffb547;
+            --think-a: #f59e0b;
+            --think-b: #f472b6;
+            --speak-a: #38bdf8;
+            --speak-b: #818cf8;
+
+            /* Estado actual (se sobrescribe por clase de estado) */
+            --state-a: var(--idle-a);
+            --state-b: var(--idle-b);
+
+            --orb-size: clamp(200px, 46vw, 268px);
         }
 
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
             -webkit-tap-highlight-color: transparent;
         }
 
+        html, body { min-height: 100%; }
+
         body {
-            background-color: var(--bg-primary);
+            background: var(--bg-0);
             color: var(--text-primary);
             min-height: 100vh;
+            min-height: 100dvh;
             display: flex;
             flex-direction: column;
-            justify-content: space-between;
             align-items: center;
-            padding: 24px 16px;
+            justify-content: space-between;
+            gap: 12px;
+            padding: max(22px, env(safe-area-inset-top)) 20px max(22px, env(safe-area-inset-bottom));
             overflow-x: hidden;
+            position: relative;
+            isolation: isolate;
         }
 
-        /* Cabecera */
+        /* ===== Fondo ambiental (aurora) ===== */
+        .ambient {
+            position: fixed;
+            inset: 0;
+            z-index: -2;
+            overflow: hidden;
+            background:
+                radial-gradient(1200px 800px at 50% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
+                linear-gradient(180deg, var(--bg-1), var(--bg-0) 70%);
+        }
+
+        .ambient span {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(90px);
+            opacity: 0.55;
+            transition: background 1.2s ease, opacity 1.2s ease;
+            will-change: transform;
+        }
+
+        .ambient .blob-1 {
+            width: 46vmax; height: 46vmax;
+            top: -18vmax; left: -10vmax;
+            background: radial-gradient(circle at 30% 30%, var(--state-a), transparent 70%);
+            animation: drift-1 22s ease-in-out infinite alternate;
+        }
+        .ambient .blob-2 {
+            width: 40vmax; height: 40vmax;
+            bottom: -16vmax; right: -12vmax;
+            background: radial-gradient(circle at 60% 40%, var(--state-b), transparent 70%);
+            animation: drift-2 26s ease-in-out infinite alternate;
+        }
+        .ambient .blob-3 {
+            width: 30vmax; height: 30vmax;
+            top: 40%; left: 55%;
+            background: radial-gradient(circle at 50% 50%, var(--state-a), transparent 72%);
+            opacity: 0.3;
+            animation: drift-3 30s ease-in-out infinite alternate;
+        }
+
+        @keyframes drift-1 { to { transform: translate3d(8vmax, 6vmax, 0) scale(1.15); } }
+        @keyframes drift-2 { to { transform: translate3d(-7vmax, -5vmax, 0) scale(1.1); } }
+        @keyframes drift-3 { to { transform: translate3d(-6vmax, 4vmax, 0) scale(0.85); } }
+
+        /* Grano sutil para quitar el look "plano" */
+        .grain {
+            position: fixed;
+            inset: 0;
+            z-index: -1;
+            pointer-events: none;
+            opacity: 0.35;
+            mix-blend-mode: overlay;
+            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+        }
+
+        /* ===== Estados: cambian los acentos globales ===== */
+        body:has(.orb-container.escuchando) { --state-a: var(--listen-a); --state-b: var(--listen-b); }
+        body:has(.orb-container.pensando)  { --state-a: var(--think-a);  --state-b: var(--think-b); }
+        body:has(.orb-container.hablando)  { --state-a: var(--speak-a);  --state-b: var(--speak-b); }
+
+        /* ===== Cabecera ===== */
         header {
             width: 100%;
-            max-width: 520px;
+            max-width: 560px;
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding-bottom: 16px;
+            gap: 12px;
         }
 
         .brand {
             display: flex;
             align-items: center;
-            gap: 10px;
+            gap: 12px;
         }
 
         .brand-icon {
-            width: 38px;
-            height: 38px;
-            background: linear-gradient(135deg, #f97316, #ef4444);
-            border-radius: 10px;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            box-shadow: 0 4px 12px rgba(249, 115, 22, 0.3);
+            width: 42px;
+            height: 42px;
+            border-radius: 13px;
+            display: grid;
+            place-items: center;
+            font-size: 19px;
+            position: relative;
+            background: linear-gradient(140deg, #ff7a3d, #ef4444 60%, #b91c1c);
+            box-shadow:
+                0 8px 22px rgba(239, 68, 68, 0.35),
+                inset 0 1px 0 rgba(255, 255, 255, 0.25);
         }
 
         .brand-text h1 {
-            font-size: 16px;
+            font-size: 15px;
             font-weight: 700;
-            letter-spacing: -0.3px;
+            letter-spacing: -0.2px;
+            line-height: 1.2;
         }
 
         .brand-text p {
-            font-size: 12px;
+            font-size: 11px;
+            font-weight: 500;
             color: var(--text-muted);
+            letter-spacing: 0.3px;
+            margin-top: 2px;
         }
 
         .badge-live {
-            background-color: rgba(16, 185, 129, 0.15);
-            border: 1px solid rgba(16, 185, 129, 0.4);
-            color: #34d399;
-            font-size: 11px;
+            font-size: 10.5px;
             font-weight: 700;
-            padding: 4px 10px;
+            letter-spacing: 0.8px;
+            padding: 6px 12px 6px 10px;
             border-radius: 999px;
-            display: flex;
+            display: inline-flex;
             align-items: center;
-            gap: 6px;
+            gap: 7px;
+            color: #4ade80;
+            background: rgba(34, 197, 94, 0.10);
+            border: 1px solid rgba(74, 222, 128, 0.25);
+            backdrop-filter: blur(8px);
         }
 
         .badge-live::before {
             content: "";
             width: 6px;
             height: 6px;
-            background-color: #34d399;
             border-radius: 50%;
-            box-shadow: 0 0 8px #34d399;
-            animation: blink 1.5s infinite ease-in-out;
+            background: #4ade80;
+            box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
+            animation: ping 2s infinite cubic-bezier(0, 0, 0.2, 1);
         }
 
-        @keyframes blink {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.4; transform: scale(0.8); }
+        @keyframes ping {
+            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
+            70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
+            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
         }
 
-        /* Área central del orbe de voz */
+        /* ===== Centro ===== */
         main {
             width: 100%;
-            max-width: 520px;
+            max-width: 560px;
+            flex: 1;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            margin: auto 0;
+            gap: 30px;
             text-align: center;
+            padding: 8px 0;
+        }
+
+        .stage {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 18px;
+        }
+
+        .status-eyebrow {
+            font-size: 11px;
+            font-weight: 700;
+            letter-spacing: 2.4px;
+            text-transform: uppercase;
+            color: var(--text-muted);
+            display: inline-flex;
+            align-items: center;
+            gap: 9px;
+            transition: color 0.4s ease;
+        }
+        .status-eyebrow::before {
+            content: "";
+            width: 5px; height: 5px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.7;
+        }
+        body:has(.orb-container.escuchando) .status-eyebrow,
+        body:has(.orb-container.pensando) .status-eyebrow,
+        body:has(.orb-container.hablando) .status-eyebrow {
+            color: color-mix(in srgb, var(--state-b) 78%, white);
         }
 
         .orb-container {
             position: relative;
-            width: var(--pulse-size);
-            height: var(--pulse-size);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            margin-bottom: 30px;
+            width: var(--orb-size);
+            height: var(--orb-size);
+            display: grid;
+            place-items: center;
         }
 
-        .orb-pulse {
+        /* Halo difuso detrás del orbe */
+        .orb-container::after {
+            content: "";
             position: absolute;
-            width: 100%;
-            height: 100%;
+            inset: -14%;
             border-radius: 50%;
-            background: var(--accent-glow);
+            background: radial-gradient(circle at 50% 45%,
+                color-mix(in srgb, var(--state-a) 55%, transparent),
+                transparent 68%);
+            filter: blur(26px);
+            opacity: 0.7;
+            transition: opacity 0.5s ease;
+            z-index: 0;
+        }
+        .orb-container.pensando::after,
+        .orb-container.hablando::after,
+        .orb-container.escuchando::after { opacity: 1; }
+
+        /* Anillos de pulso */
+        .orb-ring {
+            position: absolute;
+            inset: 0;
+            border-radius: 50%;
+            border: 1.5px solid color-mix(in srgb, var(--state-b) 60%, transparent);
             opacity: 0;
-            transform: scale(0.9);
+            transform: scale(0.72);
             pointer-events: none;
+            z-index: 1;
+        }
+        .orb-container.escuchando .orb-ring,
+        .orb-container.hablando .orb-ring {
+            animation: ring-wave 2.4s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+        }
+        .orb-container.hablando .orb-ring { animation-duration: 1.5s; }
+        .orb-container .orb-ring:nth-of-type(2) { animation-delay: 0.8s; }
+        .orb-container .orb-ring:nth-of-type(3) { animation-delay: 1.6s; }
+
+        @keyframes ring-wave {
+            0%   { opacity: 0.55; transform: scale(0.72); }
+            80%  { opacity: 0;    transform: scale(1.28); }
+            100% { opacity: 0;    transform: scale(1.28); }
         }
 
+        /* Botón / esfera principal */
         .orb-button {
-            width: 150px;
-            height: 150px;
+            --btn: clamp(150px, 34vw, 196px);
+            width: var(--btn);
+            height: var(--btn);
             border-radius: 50%;
-            background: linear-gradient(135deg, #1c274c, #0f172a);
-            border: 2px solid var(--border-color);
-            color: white;
+            border: none;
+            cursor: pointer;
+            position: relative;
+            z-index: 3;
             display: flex;
             flex-direction: column;
             align-items: center;
             justify-content: center;
-            cursor: pointer;
-            position: relative;
-            z-index: 2;
-            transition: all 0.35s cubic-bezier(0.4, 0, 0.2, 1);
-            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+            gap: 7px;
+            color: var(--text-primary);
+            background:
+                radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.16), transparent 45%),
+                linear-gradient(160deg, #141a30, #0b0f1d 70%);
+            box-shadow:
+                0 26px 60px -18px rgba(0, 0, 0, 0.75),
+                inset 0 1px 0 rgba(255, 255, 255, 0.10),
+                inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+            overflow: hidden;
+            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
+            animation: breathe 6s ease-in-out infinite;
         }
+
+        @keyframes breathe {
+            0%, 100% { transform: scale(1); }
+            50%      { transform: scale(1.035); }
+        }
+
+        /* Núcleo de gradiente animado dentro de la esfera */
+        .orb-button::before {
+            content: "";
+            position: absolute;
+            inset: -30%;
+            border-radius: 50%;
+            background: conic-gradient(from 0deg,
+                var(--state-a),
+                var(--state-b),
+                color-mix(in srgb, var(--state-a) 60%, #ffffff),
+                var(--state-b),
+                var(--state-a));
+            filter: blur(22px);
+            opacity: 0.55;
+            z-index: 0;
+            animation: spin 14s linear infinite;
+            transition: opacity 0.5s ease;
+        }
+
+        /* Brillo especular superior */
+        .orb-button::after {
+            content: "";
+            position: absolute;
+            left: 14%;
+            top: 8%;
+            width: 55%;
+            height: 40%;
+            border-radius: 50%;
+            background: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.4), transparent 70%);
+            filter: blur(6px);
+            z-index: 2;
+            pointer-events: none;
+        }
+
+        @keyframes spin { to { transform: rotate(360deg); } }
 
         .orb-button:hover {
-            transform: scale(1.03);
-            border-color: var(--accent-flame);
+            transform: scale(1.04);
+            box-shadow:
+                0 30px 70px -18px rgba(0, 0, 0, 0.8),
+                inset 0 1px 0 rgba(255, 255, 255, 0.14);
+        }
+        .orb-button:active { transform: scale(0.97); }
+        .orb-button:focus-visible {
+            outline: 2px solid color-mix(in srgb, var(--state-b) 80%, white);
+            outline-offset: 6px;
         }
 
-        .orb-button:active {
-            transform: scale(0.97);
-        }
+        .orb-icon, .orb-label, .audio-bars { position: relative; z-index: 4; }
 
         .orb-icon {
-            font-size: 42px;
-            margin-bottom: 6px;
+            font-size: clamp(30px, 8vw, 40px);
+            line-height: 1;
+            filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.5));
             transition: transform 0.3s ease;
         }
 
         .orb-label {
-            font-size: 13px;
+            font-size: 12px;
             font-weight: 600;
-            color: var(--text-muted);
-            letter-spacing: 0.2px;
+            letter-spacing: 0.4px;
+            color: var(--text-soft);
+            max-width: 78%;
+            transition: color 0.35s ease;
         }
 
-        /* Estados dinámicos del orbe */
-        /* 1. Estado: Escuchando (pulsación naranja viva) */
-        .orb-container.escuchando .orb-button {
-            border-color: var(--accent-orange);
-            background: linear-gradient(135deg, #2b1d16, #141b2d);
-            box-shadow: 0 0 40px rgba(249, 115, 22, 0.5);
-        }
-        .orb-container.escuchando .orb-label {
-            color: var(--accent-orange);
-        }
-        .orb-container.escuchando .orb-pulse {
-            animation: pulse-wave 1.8s infinite cubic-bezier(0.2, 0.8, 0.2, 1);
-        }
+        /* Estados: intensidad del gradiente y animación */
+        .orb-container.escuchando .orb-button::before { opacity: 0.85; animation-duration: 7s; }
+        .orb-container.pensando  .orb-button::before { opacity: 0.95; animation-duration: 3s; }
+        .orb-container.hablando  .orb-button::before { opacity: 0.9;  animation-duration: 5s; }
 
-        /* 2. Estado: Pensando (resplandor giratorio / respiración) */
-        .orb-container.pensando .orb-button {
-            border-color: #f59e0b;
-            box-shadow: 0 0 35px rgba(245, 158, 11, 0.6);
-            animation: thinking-glow 1.2s infinite ease-in-out;
-        }
-        .orb-container.pensando .orb-label {
-            color: #fbbf24;
-        }
+        .orb-container.pensando .orb-button { animation-duration: 2.6s; }
+        .orb-container.hablando .orb-button,
+        .orb-container.escuchando .orb-button { animation: none; }
 
-        /* 3. Estado: Hablando (onda expansiva rítmica) */
-        .orb-container.hablando .orb-button {
-            border-color: #38bdf8;
-            box-shadow: 0 0 45px rgba(56, 189, 248, 0.6);
-            background: linear-gradient(135deg, #102a45, #0f172a);
-        }
-        .orb-container.hablando .orb-label {
-            color: #38bdf8;
-        }
-        .orb-container.hablando .orb-pulse {
-            background: rgba(56, 189, 248, 0.3);
-            animation: pulse-wave 1.2s infinite ease-out;
-        }
+        .orb-container.escuchando .orb-label { color: color-mix(in srgb, var(--listen-b) 85%, white); }
+        .orb-container.pensando  .orb-label { color: color-mix(in srgb, var(--think-b)  75%, white); }
+        .orb-container.hablando  .orb-label { color: color-mix(in srgb, var(--speak-a)  85%, white); }
 
-        @keyframes pulse-wave {
-            0% { transform: scale(0.9); opacity: 0.8; }
-            50% { opacity: 0.4; }
-            100% { transform: scale(1.6); opacity: 0; }
-        }
-
-        @keyframes thinking-glow {
-            0%, 100% { transform: scale(1); filter: brightness(1); }
-            50% { transform: scale(1.04); filter: brightness(1.2); }
-        }
-
-        /* Visualizador de audio simulación */
+        /* Visualizador de audio */
         .audio-bars {
             display: none;
-            gap: 4px;
+            gap: 3.5px;
             align-items: center;
             justify-content: center;
-            height: 18px;
-            margin-top: 4px;
+            height: 20px;
+            margin-top: 1px;
         }
-
         .orb-container.hablando .audio-bars,
-        .orb-container.escuchando .audio-bars {
-            display: flex;
-        }
+        .orb-container.escuchando .audio-bars { display: flex; }
+        .orb-container.hablando .orb-icon,
+        .orb-container.escuchando .orb-icon { display: none; }
 
         .bar {
             width: 3px;
             height: 6px;
-            background-color: currentColor;
             border-radius: 99px;
-            animation: bar-anim 0.8s infinite ease-in-out alternate;
+            background: color-mix(in srgb, var(--state-b) 70%, white);
+            box-shadow: 0 0 8px color-mix(in srgb, var(--state-b) 60%, transparent);
+            animation: bar-anim 0.7s infinite ease-in-out alternate;
         }
-        .bar:nth-child(1) { animation-delay: 0.1s; }
-        .bar:nth-child(2) { animation-delay: 0.3s; }
-        .bar:nth-child(3) { animation-delay: 0.2s; }
-        .bar:nth-child(4) { animation-delay: 0.4s; }
+        .bar:nth-child(1) { animation-delay: 0.00s; }
+        .bar:nth-child(2) { animation-delay: 0.18s; }
+        .bar:nth-child(3) { animation-delay: 0.34s; }
+        .bar:nth-child(4) { animation-delay: 0.12s; }
+        .bar:nth-child(5) { animation-delay: 0.26s; }
 
         @keyframes bar-anim {
-            from { height: 4px; }
-            to { height: 18px; }
+            from { height: 5px; opacity: 0.6; }
+            to   { height: 20px; opacity: 1; }
         }
 
-        /* Subtítulos en pantalla */
+        /* ===== Panel de subtítulos ===== */
         .subtitles-box {
             width: 100%;
-            background-color: var(--bg-card);
-            border: 1px solid var(--border-color);
-            border-radius: 16px;
+            max-width: 460px;
+            background: var(--surface);
+            border: 1px solid var(--hairline);
+            border-radius: 20px;
             padding: 18px 20px;
-            min-height: 110px;
+            min-height: 116px;
             display: flex;
             flex-direction: column;
             justify-content: center;
-            gap: 10px;
+            gap: 14px;
             text-align: left;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.2);
-            transition: all 0.3s ease;
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            box-shadow: 0 20px 50px -24px rgba(0, 0, 0, 0.7);
+            transition: border-color 0.4s ease;
+        }
+        body:has(.orb-container.hablando) .subtitles-box,
+        body:has(.orb-container.escuchando) .subtitles-box {
+            border-color: color-mix(in srgb, var(--state-b) 30%, var(--hairline));
         }
 
         .subtitle-line {
             display: flex;
             align-items: flex-start;
-            gap: 10px;
+            gap: 11px;
             font-size: 14px;
-            line-height: 1.5;
+            line-height: 1.55;
         }
 
         .subtitle-tag {
-            font-size: 11px;
+            font-size: 9.5px;
             font-weight: 700;
-            padding: 2px 8px;
-            border-radius: 6px;
+            letter-spacing: 0.6px;
+            padding: 3px 8px;
+            border-radius: 7px;
             text-transform: uppercase;
             flex-shrink: 0;
             margin-top: 2px;
         }
 
         .tag-user {
-            background-color: rgba(249, 115, 22, 0.2);
-            color: #fb923c;
-            border: 1px solid rgba(249, 115, 22, 0.3);
+            color: #ffb28a;
+            background: rgba(255, 122, 61, 0.14);
+            border: 1px solid rgba(255, 122, 61, 0.28);
         }
 
         .tag-bot {
-            background-color: rgba(56, 189, 248, 0.2);
-            color: #38bdf8;
-            border: 1px solid rgba(56, 189, 248, 0.3);
+            color: #7dd3fc;
+            background: rgba(56, 189, 248, 0.14);
+            border: 1px solid rgba(56, 189, 248, 0.28);
         }
 
         .subtitle-text {
             color: var(--text-primary);
             word-break: break-word;
         }
-
         .subtitle-text.empty {
             color: var(--text-muted);
             font-style: italic;
         }
 
-        /* Botones de control secundarios */
+        /* ===== Controles ===== */
         .controls {
-            margin-top: 20px;
             display: flex;
-            gap: 12px;
+            gap: 10px;
+            flex-wrap: wrap;
+            justify-content: center;
         }
 
         .btn-control {
-            background: transparent;
-            border: 1px solid var(--border-color);
-            color: var(--text-muted);
-            padding: 8px 16px;
-            border-radius: 10px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .btn-control:hover {
-            color: var(--text-primary);
-            border-color: #475569;
-            background-color: rgba(255, 255, 255, 0.03);
-        }
-
-        .btn-control.danger:hover {
-            color: #f87171;
-            border-color: #ef4444;
-            background-color: rgba(239, 68, 68, 0.08);
-        }
-
-        /* Pie de página */
-        footer {
-            width: 100%;
-            max-width: 520px;
-            text-align: center;
-            font-size: 12px;
-            color: var(--text-muted);
-            padding-top: 16px;
-            border-top: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        /* Toast de aviso */
-        .toast {
-            position: fixed;
-            bottom: 20px;
-            background: #1e293b;
-            color: #f1f5f9;
+            background: var(--surface);
+            border: 1px solid var(--hairline);
+            color: var(--text-soft);
             padding: 10px 18px;
             border-radius: 999px;
             font-size: 12px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            backdrop-filter: blur(10px);
+        }
+        .btn-control:hover {
+            color: var(--text-primary);
+            border-color: var(--hairline-strong);
+            background: var(--surface-strong);
+            transform: translateY(-1px);
+        }
+        .btn-control:active { transform: translateY(0); }
+        .btn-control.danger:hover {
+            color: #fca5a5;
+            border-color: rgba(239, 68, 68, 0.45);
+            background: rgba(239, 68, 68, 0.10);
+        }
+
+        /* ===== Pie ===== */
+        footer {
+            width: 100%;
+            max-width: 560px;
+            text-align: center;
+            font-size: 11px;
             font-weight: 500;
-            box-shadow: 0 6px 20px rgba(0, 0, 0, 0.4);
+            letter-spacing: 0.3px;
+            color: var(--text-muted);
+            padding-top: 14px;
+        }
+        footer span { color: var(--text-soft); }
+
+        /* ===== Toast ===== */
+        .toast {
+            position: fixed;
+            left: 50%;
+            bottom: calc(22px + env(safe-area-inset-bottom));
+            transform: translate(-50%, 20px);
+            background: rgba(20, 24, 38, 0.92);
+            color: #f1f5f9;
+            padding: 11px 20px;
+            border-radius: 999px;
+            font-size: 12px;
+            font-weight: 500;
+            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
+            border: 1px solid var(--hairline-strong);
+            backdrop-filter: blur(12px);
             opacity: 0;
-            transform: translateY(20px);
-            transition: all 0.3s ease;
+            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
             pointer-events: none;
             z-index: 100;
-            border: 1px solid #334155;
         }
         .toast.show {
             opacity: 1;
-            transform: translateY(0);
+            transform: translate(-50%, 0);
+        }
+
+        @media (max-width: 380px) {
+            main { gap: 22px; }
+            .subtitles-box { padding: 16px; }
+        }
+
+        @media (prefers-reduced-motion: reduce) {
+            .ambient span, .orb-button, .orb-button::before,
+            .badge-live::before, .orb-ring, .bar { animation: none !important; }
         }
     </style>
 </head>
 <body>
+    <div class="ambient" aria-hidden="true">
+        <span class="blob-1"></span>
+        <span class="blob-2"></span>
+        <span class="blob-3"></span>
+    </div>
+    <div class="grain" aria-hidden="true"></div>
+
     <!-- Encabezado -->
     <header>
         <div class="brand">
@@ -403,18 +611,25 @@
 
     <!-- Centro interactivo -->
     <main>
-        <div class="orb-container" id="orbContainer">
-            <div class="orb-pulse"></div>
-            <button class="orb-button" id="orbButton" aria-label="Iniciar o pausar conversación continua">
-                <span class="orb-icon" id="orbIcon">🎙️</span>
-                <span class="orb-label" id="orbLabel">Toca para Iniciar</span>
-                <div class="audio-bars">
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                    <div class="bar"></div>
-                </div>
-            </button>
+        <div class="stage">
+            <span class="status-eyebrow" id="statusEyebrow">En espera</span>
+
+            <div class="orb-container" id="orbContainer">
+                <span class="orb-ring"></span>
+                <span class="orb-ring"></span>
+                <span class="orb-ring"></span>
+                <button class="orb-button" id="orbButton" aria-label="Iniciar o pausar conversación continua">
+                    <span class="orb-icon" id="orbIcon">🎙️</span>
+                    <span class="orb-label" id="orbLabel">Toca para Iniciar</span>
+                    <div class="audio-bars" aria-hidden="true">
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                        <div class="bar"></div>
+                    </div>
+                </button>
+            </div>
         </div>
 
         <!-- Subtítulos en pantalla -->
@@ -438,7 +653,7 @@
 
     <!-- Footer -->
     <footer>
-        Conversación continua manos libres • Groq LLM + Speech API
+        Conversación continua manos libres · <span>Groq LLM + Speech API</span>
     </footer>
 
     <!-- Toast de notificaciones -->
@@ -455,6 +670,7 @@
         const orbButton = document.getElementById("orbButton");
         const orbIcon = document.getElementById("orbIcon");
         const orbLabel = document.getElementById("orbLabel");
+        const statusEyebrow = document.getElementById("statusEyebrow");
         const userSubText = document.getElementById("userSubText");
         const botSubText = document.getElementById("botSubText");
         const btnPausar = document.getElementById("btnPausar");
@@ -467,6 +683,12 @@
             ESCUCHANDO: "escuchando",
             PENSANDO: "pensando",
             HABLANDO: "hablando"
+        };
+        const EYEBROW_TEXTO = {
+            inactivo: "En espera",
+            escuchando: "Escuchando",
+            pensando: "Procesando",
+            hablando: "Respondiendo"
         };
         let estadoActual = ESTADOS.INACTIVO;
         let conversacionActiva = false;
@@ -488,6 +710,7 @@
         function setEstado(nuevoEstado, textoPersonalizado = "") {
             estadoActual = nuevoEstado;
             orbContainer.classList.remove("escuchando", "pensando", "hablando");
+            statusEyebrow.textContent = EYEBROW_TEXTO[nuevoEstado] || EYEBROW_TEXTO.inactivo;
 
             switch (nuevoEstado) {
                 case ESTADOS.ESCUCHANDO:
@@ -683,7 +906,7 @@
 
             // Selección de voz en español
             const voces = window.speechSynthesis.getVoices();
-            const vozEspanol = voces.find(v => v.lang.startsWith("es") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Sabina") || v.name.includes("Helena"))) 
+            const vozEspanol = voces.find(v => v.lang.startsWith("es") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Sabina") || v.name.includes("Helena")))
                             || voces.find(v => v.lang.startsWith("es"));
             if (vozEspanol) {
                 utterance.voice = vozEspanol;
