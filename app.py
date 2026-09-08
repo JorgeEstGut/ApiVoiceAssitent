@@ -37,6 +37,13 @@ def create_app() -> Flask:
         """Sirve el favicon también desde la raíz."""
         return send_from_directory("static", "favicon.ico", mimetype="image/x-icon")
 
+    @app.route("/manifest.webmanifest")
+    def manifest():
+        """Sirve el manifiesto PWA con el mimetype correcto (Windows no lo registra)."""
+        return send_from_directory(
+            "static", "manifest.webmanifest", mimetype="application/manifest+json"
+        )
+
     @app.route("/health")
     def health():
         """Health check para Render."""
