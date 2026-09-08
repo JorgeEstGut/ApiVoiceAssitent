@@ -474,7 +474,9 @@
         // Reconocimiento de voz (SpeechRecognition)
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
         let recognition = null;
+        let isRecognizing = false;
         let speechTimeout = null;
+        let ttsFallbackTimer = null;
 
         function mostrarToast(msg) {
             toastEl.textContent = msg;
@@ -520,15 +522,16 @@
 
             const rec = new SpeechRecognition();
             rec.lang = "es-CO";
-            rec.continuous = false; // Manejado en ciclo continuo manual para máxima estabilidad en móvil
+            rec.continuous = false; // Manejado en ciclo continuo para máxima compatibilidad
             rec.interimResults = true;
             rec.maxAlternatives = 1;
 
             let finalTranscript = "";
 
             rec.onstart = () => {
+                isRecognizing = true;
                 finalTranscript = "";
-                if (conversacionActiva && estadoActual !== ESTADOS.HABLANDO && estadoActual !== ESTADOS.PENSANDO) {
+                if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO) {
                     setEstado(ESTADOS.ESCUCHANDO);
                 }
             };
@@ -549,8 +552,8 @@
                     userSubText.classList.remove("empty");
                 }
 
-                // Debounce de silencio: si el usuario deja de hablar por 1.2 segundos tras haber dicho algo
-                if (transcriptActual.trim().length > 3) {
+                // Debounce de silencio: cuando el usuario termina de hablar
+                if (transcriptActual.trim().length > 2) {
                     clearTimeout(speechTimeout);
                     speechTimeout = setTimeout(() => {
                         try { rec.stop(); } catch (e) {}
@@ -559,17 +562,20 @@
             };
 
             rec.onerror = (event) => {
+                isRecognizing = false;
                 if (event.error !== "no-speech") {
                     console.warn("SpeechRecognition error:", event.error);
                 }
-                // Si la conversación sigue activa, reintentar escuchar sin romper el ciclo
+                // Si la conversación sigue activa y toca escuchar, reintentar
                 if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO) {
-                    setTimeout(() => reiniciarEscucha(), 600);
+                    setTimeout(() => iniciarReconocimientoVoz(), 400);
                 }
             };
 
             rec.onend = () => {
+                isRecognizing = false;
                 clearTimeout(speechTimeout);
+
                 if (!conversacionActiva) {
                     setEstado(ESTADOS.INACTIVO);
                     return;
@@ -577,12 +583,12 @@
 
                 const pregunta = finalTranscript.trim();
                 if (pregunta.length > 1) {
-                    // Hay pregunta válida, enviarla al backend
+                    // Pregunta válida detectada, enviar al backend
                     enviarPreguntaAlBackend(pregunta);
                 } else {
-                    // No se captó texto (silencio), seguir escuchando de inmediato
-                    if (conversacionActiva && estadoActual !== ESTADOS.PENSANDO && estadoActual !== ESTADOS.HABLANDO) {
-                        reiniciarEscucha();
+                    // Silencio o sin audio: reanudar escucha de inmediato si sigue activa
+                    if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO) {
+                        setTimeout(() => iniciarReconocimientoVoz(), 250);
                     }
                 }
             };
@@ -590,20 +596,29 @@
             return rec;
         }
 
-        function reiniciarEscucha() {
+        // Inicia el reconocimiento de forma segura
+        function iniciarReconocimientoVoz() {
             if (!conversacionActiva) return;
+            // No iniciar si el bot aún está hablando o procesando
+            if (estadoActual === ESTADOS.HABLANDO || estadoActual === ESTADOS.PENSANDO) return;
+
+            setEstado(ESTADOS.ESCUCHANDO);
+
             try {
-                if (recognition) {
-                    recognition.abort();
-                    setTimeout(() => {
-                        if (conversacionActiva && estadoActual !== ESTADOS.HABLANDO && estadoActual !== ESTADOS.PENSANDO) {
-                            setEstado(ESTADOS.ESCUCHANDO);
-                            recognition.start();
-                        }
-                    }, 250);
+                if (!recognition) {
+                    recognition = initRecognition();
                 }
-            } catch (e) {
-                console.error("Error al reiniciar escucha:", e);
+                if (recognition && !isRecognizing) {
+                    recognition.start();
+                }
+            } catch (err) {
+                console.warn("Aviso al iniciar recognition:", err);
+                try { recognition.abort(); } catch (e) {}
+                setTimeout(() => {
+                    if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO && !isRecognizing) {
+                        try { recognition.start(); } catch (e) {}
+                    }
+                }, 300);
             }
         }
 
@@ -630,7 +645,7 @@
                 botSubText.textContent = respuesta;
                 botSubText.classList.remove("empty");
 
-                // Hablar la respuesta
+                // Reproducir respuesta en voz alta
                 reproducirVoz(respuesta);
 
             } catch (error) {
@@ -642,23 +657,31 @@
             }
         }
 
-        // Síntesis de voz (Text-to-Speech)
+        // Síntesis de voz (Text-to-Speech) con protección anti-bloqueo
         function reproducirVoz(texto) {
             if (!("speechSynthesis" in window)) {
                 mostrarToast("Tu navegador no soporta síntesis de voz.");
-                reiniciarEscucha();
+                iniciarReconocimientoVoz();
                 return;
             }
 
-            window.speechSynthesis.cancel(); // Cancelar locuciones previas
+            // Si el reconocimiento estaba activo, pararlo para evitar captar el propio altavoz
+            if (recognition) {
+                try { recognition.abort(); } catch (e) {}
+            }
+
+            window.speechSynthesis.cancel();
             setEstado(ESTADOS.HABLANDO);
 
             const utterance = new SpeechSynthesisUtterance(texto);
+            // Guardar referencia global para evitar que el Garbage Collector de Chrome mate el evento onend
+            window.activeUtterance = utterance;
+
             utterance.lang = "es-CO";
-            utterance.rate = 1.05; // Ritmo ágil y natural
+            utterance.rate = 1.05;
             utterance.pitch = 1.0;
 
-            // Intentar buscar una voz en español de alta calidad
+            // Selección de voz en español
             const voces = window.speechSynthesis.getVoices();
             const vozEspanol = voces.find(v => v.lang.startsWith("es") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Sabina") || v.name.includes("Helena"))) 
                             || voces.find(v => v.lang.startsWith("es"));
@@ -666,23 +689,51 @@
                 utterance.voice = vozEspanol;
             }
 
-            utterance.onend = () => {
-                // En cuanto el asistente termina de hablar, vuelve automáticamente a escuchar
-                if (conversacionActiva) {
-                    setTimeout(() => {
-                        reiniciarEscucha();
-                    }, 350);
-                } else {
+            let habladoTerminado = false;
+
+            // Función central que finaliza la locución y reactiva la escucha continua
+            function finalizarLocucionYEscuchar() {
+                if (habladoTerminado) return;
+                habladoTerminado = true;
+
+                clearTimeout(ttsFallbackTimer);
+                window.activeUtterance = null;
+
+                if (!conversacionActiva) {
                     setEstado(ESTADOS.INACTIVO);
+                    return;
                 }
+
+                // Cambiar inmediatamente a estado ESCUCHANDO
+                setEstado(ESTADOS.ESCUCHANDO);
+
+                // Esperar 350ms para que el eco del altavoz se disipe por completo
+                setTimeout(() => {
+                    if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO) {
+                        iniciarReconocimientoVoz();
+                    }
+                }, 350);
+            }
+
+            // Eventos estándar de fin y error
+            utterance.onend = () => {
+                finalizarLocucionYEscuchar();
             };
 
             utterance.onerror = (e) => {
                 console.warn("SpeechSynthesis error:", e);
-                if (conversacionActiva) {
-                    reiniciarEscucha();
-                }
+                finalizarLocucionYEscuchar();
             };
+
+            // Temporizador de seguridad (Fallback): si por bug de Chrome 'onend' no se dispara,
+            // forzar la reactivación tras el tiempo estimado de lectura
+            const duracionEstimadaMs = Math.max(3000, Math.ceil(texto.length * 85) + 1200);
+            ttsFallbackTimer = setTimeout(() => {
+                if (!habladoTerminado) {
+                    console.log("Activando fallback de seguridad para continuar conversación");
+                    finalizarLocucionYEscuchar();
+                }
+            }, duracionEstimadaMs);
 
             window.speechSynthesis.speak(utterance);
         }
@@ -697,18 +748,20 @@
             if (!recognition) {
                 recognition = initRecognition();
             }
-            if (!recognition) return;
-
             conversacionActiva = true;
             window.speechSynthesis.cancel();
-            reiniciarEscucha();
+            iniciarReconocimientoVoz();
             mostrarToast("Conversación iniciada. Habla cuando quieras.");
         }
 
         // Detener conversación
         function detenerConversacion() {
             conversacionActiva = false;
+            clearTimeout(ttsFallbackTimer);
+            clearTimeout(speechTimeout);
             window.speechSynthesis.cancel();
+            window.activeUtterance = null;
+
             if (recognition) {
                 try { recognition.abort(); } catch (e) {}
             }
