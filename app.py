@@ -32,6 +32,11 @@ def create_app() -> Flask:
         """Sirve el frontend de conversación continua por voz."""
         return send_from_directory("static", "index.html")
 
+    @app.route("/favicon.ico")
+    def favicon():
+        """Sirve el favicon también desde la raíz."""
+        return send_from_directory("static", "favicon.ico", mimetype="image/x-icon")
+
     @app.route("/health")
     def health():
         """Health check para Render."""
