@@ -3,695 +3,467 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="theme-color" content="#05070f">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#0c0b0a">
     <title>Asistente de Voz IA — Monitoreo de Incendios</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
     <style>
         :root {
-            --bg-0: #05070f;
-            --bg-1: #0a0e1c;
-            --surface: rgba(255, 255, 255, 0.045);
-            --surface-strong: rgba(255, 255, 255, 0.07);
-            --hairline: rgba(255, 255, 255, 0.09);
-            --hairline-strong: rgba(255, 255, 255, 0.16);
-            --text-primary: #f4f6fb;
-            --text-soft: #c3cad9;
-            --text-muted: #7b8398;
-
-            /* Acentos por estado */
-            --idle-a: #6366f1;
-            --idle-b: #22d3ee;
-            --listen-a: #ff7a3d;
-            --listen-b: #ffb547;
-            --think-a: #f59e0b;
-            --think-b: #f472b6;
-            --speak-a: #38bdf8;
-            --speak-b: #818cf8;
-
-            /* Estado actual (se sobrescribe por clase de estado) */
-            --state-a: var(--idle-a);
-            --state-b: var(--idle-b);
-
-            --orb-size: clamp(200px, 46vw, 268px);
+            --bg:      #0c0b0a;
+            --ink:     oklch(0.93 0.008 80);
+            --ink-2:   oklch(0.93 0.008 80 / 0.62);
+            --ink-3:   oklch(0.93 0.008 80 / 0.42);
+            --line:    oklch(0.93 0.008 80 / 0.14);
+            --line-2:  oklch(0.93 0.008 80 / 0.08);
+            --accent:  oklch(0.72 0.13 45);
+            --accent-hi: oklch(0.80 0.12 45);
+            --cool:    oklch(0.72 0.13 200);
+            --live:    oklch(0.76 0.16 150);
+            --sans: 'Space Grotesk', 'Helvetica Neue', Arial, sans-serif;
+            --mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
         }
 
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            -webkit-tap-highlight-color: transparent;
-        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
 
-        html, body { min-height: 100%; }
+        html, body { height: 100%; }
 
         body {
-            background: var(--bg-0);
-            color: var(--text-primary);
+            background: var(--bg);
+            color: var(--ink);
+            font-family: var(--sans);
+            -webkit-font-smoothing: antialiased;
+            -webkit-tap-highlight-color: transparent;
+            overflow-x: hidden;
+        }
+
+        button {
+            font: inherit;
+            color: inherit;
+            background: none;
+            border: 0;
+            padding: 0;
+            cursor: pointer;
+            letter-spacing: inherit;
+        }
+
+        button:focus-visible {
+            outline: 1px solid var(--accent);
+            outline-offset: 2px;
+        }
+
+        /* ===== Raíz ===== */
+        .app {
             min-height: 100vh;
             min-height: 100dvh;
+            container-type: inline-size;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: space-between;
-            gap: 12px;
-            padding: max(22px, env(safe-area-inset-top)) 20px max(22px, env(safe-area-inset-bottom));
-            overflow-x: hidden;
-            position: relative;
-            isolation: isolate;
+            padding: max(clamp(18px, 3cqi, 40px), env(safe-area-inset-top)) clamp(18px, 3cqi, 40px) max(clamp(18px, 3cqi, 40px), env(safe-area-inset-bottom));
+            gap: clamp(20px, 3cqi, 34px);
         }
-
-        /* ===== Fondo ambiental (aurora) ===== */
-        .ambient {
-            position: fixed;
-            inset: 0;
-            z-index: -2;
-            overflow: hidden;
-            background:
-                radial-gradient(1200px 800px at 50% -10%, rgba(99, 102, 241, 0.10), transparent 60%),
-                linear-gradient(180deg, var(--bg-1), var(--bg-0) 70%);
-        }
-
-        .ambient span {
-            position: absolute;
-            border-radius: 50%;
-            filter: blur(90px);
-            opacity: 0.55;
-            transition: background 1.2s ease, opacity 1.2s ease;
-            will-change: transform;
-        }
-
-        .ambient .blob-1 {
-            width: 46vmax; height: 46vmax;
-            top: -18vmax; left: -10vmax;
-            background: radial-gradient(circle at 30% 30%, var(--state-a), transparent 70%);
-            animation: drift-1 22s ease-in-out infinite alternate;
-        }
-        .ambient .blob-2 {
-            width: 40vmax; height: 40vmax;
-            bottom: -16vmax; right: -12vmax;
-            background: radial-gradient(circle at 60% 40%, var(--state-b), transparent 70%);
-            animation: drift-2 26s ease-in-out infinite alternate;
-        }
-        .ambient .blob-3 {
-            width: 30vmax; height: 30vmax;
-            top: 40%; left: 55%;
-            background: radial-gradient(circle at 50% 50%, var(--state-a), transparent 72%);
-            opacity: 0.3;
-            animation: drift-3 30s ease-in-out infinite alternate;
-        }
-
-        @keyframes drift-1 { to { transform: translate3d(8vmax, 6vmax, 0) scale(1.15); } }
-        @keyframes drift-2 { to { transform: translate3d(-7vmax, -5vmax, 0) scale(1.1); } }
-        @keyframes drift-3 { to { transform: translate3d(-6vmax, 4vmax, 0) scale(0.85); } }
-
-        /* Grano sutil para quitar el look "plano" */
-        .grain {
-            position: fixed;
-            inset: 0;
-            z-index: -1;
-            pointer-events: none;
-            opacity: 0.35;
-            mix-blend-mode: overlay;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-        }
-
-        /* ===== Estados: cambian los acentos globales ===== */
-        body:has(.orb-container.escuchando) { --state-a: var(--listen-a); --state-b: var(--listen-b); }
-        body:has(.orb-container.pensando)  { --state-a: var(--think-a);  --state-b: var(--think-b); }
-        body:has(.orb-container.hablando)  { --state-a: var(--speak-a);  --state-b: var(--speak-b); }
 
         /* ===== Cabecera ===== */
-        header {
-            width: 100%;
-            max-width: 560px;
+        .hd {
             display: flex;
+            flex-wrap: wrap;
+            align-items: flex-end;
             justify-content: space-between;
-            align-items: center;
-            gap: 12px;
+            gap: 16px 24px;
+            padding-bottom: clamp(14px, 2cqi, 20px);
+            border-bottom: 1px solid var(--line);
         }
 
-        .brand {
+        .hd-brand {
             display: flex;
-            align-items: center;
-            gap: 12px;
+            align-items: flex-end;
+            gap: clamp(12px, 2cqi, 20px);
+            min-width: 0;
         }
 
-        .brand-icon {
-            width: 42px;
-            height: 42px;
-            border-radius: 13px;
-            display: grid;
-            place-items: center;
-            font-size: 19px;
-            position: relative;
-            background: linear-gradient(140deg, #ff7a3d, #ef4444 60%, #b91c1c);
-            box-shadow:
-                0 8px 22px rgba(239, 68, 68, 0.35),
-                inset 0 1px 0 rgba(255, 255, 255, 0.25);
+        .hd-bar {
+            width: 10px;
+            height: clamp(30px, 4.4cqi, 46px);
+            background: var(--accent);
+            flex: none;
         }
 
-        .brand-text h1 {
-            font-size: 15px;
-            font-weight: 700;
-            letter-spacing: -0.2px;
-            line-height: 1.2;
-        }
-
-        .brand-text p {
-            font-size: 11px;
-            font-weight: 500;
-            color: var(--text-muted);
-            letter-spacing: 0.3px;
-            margin-top: 2px;
-        }
-
-        .badge-live {
-            font-size: 10.5px;
-            font-weight: 700;
-            letter-spacing: 0.8px;
-            padding: 6px 12px 6px 10px;
-            border-radius: 999px;
-            display: inline-flex;
-            align-items: center;
-            gap: 7px;
-            color: #4ade80;
-            background: rgba(34, 197, 94, 0.10);
-            border: 1px solid rgba(74, 222, 128, 0.25);
-            backdrop-filter: blur(8px);
-        }
-
-        .badge-live::before {
-            content: "";
-            width: 6px;
-            height: 6px;
-            border-radius: 50%;
-            background: #4ade80;
-            box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.6);
-            animation: ping 2s infinite cubic-bezier(0, 0, 0.2, 1);
-        }
-
-        @keyframes ping {
-            0% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0.5); }
-            70% { box-shadow: 0 0 0 8px rgba(74, 222, 128, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); }
-        }
-
-        /* ===== Centro ===== */
-        main {
-            width: 100%;
-            max-width: 560px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 30px;
-            text-align: center;
-            padding: 8px 0;
-        }
-
-        .stage {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 18px;
-        }
-
-        .status-eyebrow {
-            font-size: 11px;
-            font-weight: 700;
-            letter-spacing: 2.4px;
+        .eyebrow {
+            font-family: var(--mono);
+            font-size: 10px;
+            font-weight: 400;
+            letter-spacing: 0.22em;
             text-transform: uppercase;
-            color: var(--text-muted);
-            display: inline-flex;
+            color: var(--ink-3);
+        }
+
+        .hd h1 {
+            margin-top: 2px;
+            font-size: clamp(20px, 3.2cqi, 30px);
+            font-weight: 600;
+            letter-spacing: -0.02em;
+            line-height: 1.05;
+            text-wrap: pretty;
+        }
+
+        .hd-live {
+            display: flex;
             align-items: center;
             gap: 9px;
-            transition: color 0.4s ease;
-        }
-        .status-eyebrow::before {
-            content: "";
-            width: 5px; height: 5px;
-            border-radius: 50%;
-            background: currentColor;
-            opacity: 0.7;
-        }
-        body:has(.orb-container.escuchando) .status-eyebrow,
-        body:has(.orb-container.pensando) .status-eyebrow,
-        body:has(.orb-container.hablando) .status-eyebrow {
-            color: color-mix(in srgb, var(--state-b) 78%, white);
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 0.2em;
+            color: var(--ink-2);
         }
 
-        .orb-container {
-            position: relative;
-            width: var(--orb-size);
-            height: var(--orb-size);
-            display: grid;
-            place-items: center;
+        .blip {
+            width: 7px;
+            height: 7px;
+            background: var(--live);
+            flex: none;
+            animation: blip 1.8s ease-in-out infinite;
         }
 
-        /* Halo difuso detrás del orbe */
-        .orb-container::after {
-            content: "";
-            position: absolute;
-            inset: -14%;
-            border-radius: 50%;
-            background: radial-gradient(circle at 50% 45%,
-                color-mix(in srgb, var(--state-a) 55%, transparent),
-                transparent 68%);
-            filter: blur(26px);
-            opacity: 0.7;
-            transition: opacity 0.5s ease;
-            z-index: 0;
-        }
-        .orb-container.pensando::after,
-        .orb-container.hablando::after,
-        .orb-container.escuchando::after { opacity: 1; }
-
-        /* Anillos de pulso */
-        .orb-ring {
-            position: absolute;
-            inset: 0;
-            border-radius: 50%;
-            border: 1.5px solid color-mix(in srgb, var(--state-b) 60%, transparent);
-            opacity: 0;
-            transform: scale(0.72);
-            pointer-events: none;
-            z-index: 1;
-        }
-        .orb-container.escuchando .orb-ring,
-        .orb-container.hablando .orb-ring {
-            animation: ring-wave 2.4s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
-        }
-        .orb-container.hablando .orb-ring { animation-duration: 1.5s; }
-        .orb-container .orb-ring:nth-of-type(2) { animation-delay: 0.8s; }
-        .orb-container .orb-ring:nth-of-type(3) { animation-delay: 1.6s; }
-
-        @keyframes ring-wave {
-            0%   { opacity: 0.55; transform: scale(0.72); }
-            80%  { opacity: 0;    transform: scale(1.28); }
-            100% { opacity: 0;    transform: scale(1.28); }
+        @keyframes blip {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.25; }
         }
 
-        /* Botón / esfera principal */
-        .orb-button {
-            --btn: clamp(150px, 34vw, 196px);
-            width: var(--btn);
-            height: var(--btn);
-            border-radius: 50%;
-            border: none;
-            cursor: pointer;
-            position: relative;
-            z-index: 3;
+        /* ===== Cuerpo ===== */
+        .main {
+            flex: 1 1 auto;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: stretch;
+            gap: clamp(26px, 4cqi, 64px);
+        }
+
+        .col-main {
+            flex: 1 1 420px;
+            min-width: 0;
             display: flex;
             flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            gap: 7px;
-            color: var(--text-primary);
-            background:
-                radial-gradient(circle at 32% 28%, rgba(255, 255, 255, 0.16), transparent 45%),
-                linear-gradient(160deg, #141a30, #0b0f1d 70%);
-            box-shadow:
-                0 26px 60px -18px rgba(0, 0, 0, 0.75),
-                inset 0 1px 0 rgba(255, 255, 255, 0.10),
-                inset 0 0 0 1px rgba(255, 255, 255, 0.06);
-            overflow: hidden;
-            transition: transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease;
-            animation: breathe 6s ease-in-out infinite;
+            gap: clamp(20px, 3cqi, 32px);
         }
 
-        @keyframes breathe {
-            0%, 100% { transform: scale(1); }
-            50%      { transform: scale(1.035); }
-        }
-
-        /* Núcleo de gradiente animado dentro de la esfera */
-        .orb-button::before {
-            content: "";
-            position: absolute;
-            inset: -30%;
-            border-radius: 50%;
-            background: conic-gradient(from 0deg,
-                var(--state-a),
-                var(--state-b),
-                color-mix(in srgb, var(--state-a) 60%, #ffffff),
-                var(--state-b),
-                var(--state-a));
-            filter: blur(22px);
-            opacity: 0.55;
-            z-index: 0;
-            animation: spin 14s linear infinite;
-            transition: opacity 0.5s ease;
-        }
-
-        /* Brillo especular superior */
-        .orb-button::after {
-            content: "";
-            position: absolute;
-            left: 14%;
-            top: 8%;
-            width: 55%;
-            height: 40%;
-            border-radius: 50%;
-            background: radial-gradient(circle at 40% 40%, rgba(255, 255, 255, 0.4), transparent 70%);
-            filter: blur(6px);
-            z-index: 2;
-            pointer-events: none;
-        }
-
-        @keyframes spin { to { transform: rotate(360deg); } }
-
-        .orb-button:hover {
-            transform: scale(1.04);
-            box-shadow:
-                0 30px 70px -18px rgba(0, 0, 0, 0.8),
-                inset 0 1px 0 rgba(255, 255, 255, 0.14);
-        }
-        .orb-button:active { transform: scale(0.97); }
-        .orb-button:focus-visible {
-            outline: 2px solid color-mix(in srgb, var(--state-b) 80%, white);
-            outline-offset: 6px;
-        }
-
-        .orb-icon, .orb-label, .audio-bars { position: relative; z-index: 4; }
-
-        .orb-icon {
-            font-size: clamp(30px, 8vw, 40px);
-            line-height: 1;
-            filter: drop-shadow(0 3px 8px rgba(0, 0, 0, 0.5));
-            transition: transform 0.3s ease;
-        }
-
-        .orb-label {
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: 0.4px;
-            color: var(--text-soft);
-            max-width: 78%;
-            transition: color 0.35s ease;
-        }
-
-        /* Estados: intensidad del gradiente y animación */
-        .orb-container.escuchando .orb-button::before { opacity: 0.85; animation-duration: 7s; }
-        .orb-container.pensando  .orb-button::before { opacity: 0.95; animation-duration: 3s; }
-        .orb-container.hablando  .orb-button::before { opacity: 0.9;  animation-duration: 5s; }
-
-        .orb-container.pensando .orb-button { animation-duration: 2.6s; }
-        .orb-container.hablando .orb-button,
-        .orb-container.escuchando .orb-button { animation: none; }
-
-        .orb-container.escuchando .orb-label { color: color-mix(in srgb, var(--listen-b) 85%, white); }
-        .orb-container.pensando  .orb-label { color: color-mix(in srgb, var(--think-b)  75%, white); }
-        .orb-container.hablando  .orb-label { color: color-mix(in srgb, var(--speak-a)  85%, white); }
-
-        /* Visualizador de audio */
-        .audio-bars {
-            display: none;
-            gap: 3.5px;
-            align-items: center;
-            justify-content: center;
-            height: 20px;
-            margin-top: 1px;
-        }
-        .orb-container.hablando .audio-bars,
-        .orb-container.escuchando .audio-bars { display: flex; }
-        .orb-container.hablando .orb-icon,
-        .orb-container.escuchando .orb-icon { display: none; }
-
-        .bar {
-            width: 3px;
-            height: 6px;
-            border-radius: 99px;
-            background: color-mix(in srgb, var(--state-b) 70%, white);
-            box-shadow: 0 0 8px color-mix(in srgb, var(--state-b) 60%, transparent);
-            animation: bar-anim 0.7s infinite ease-in-out alternate;
-        }
-        .bar:nth-child(1) { animation-delay: 0.00s; }
-        .bar:nth-child(2) { animation-delay: 0.18s; }
-        .bar:nth-child(3) { animation-delay: 0.34s; }
-        .bar:nth-child(4) { animation-delay: 0.12s; }
-        .bar:nth-child(5) { animation-delay: 0.26s; }
-
-        @keyframes bar-anim {
-            from { height: 5px; opacity: 0.6; }
-            to   { height: 20px; opacity: 1; }
-        }
-
-        /* ===== Panel de subtítulos ===== */
-        .subtitles-box {
-            width: 100%;
-            max-width: 460px;
-            background: var(--surface);
-            border: 1px solid var(--hairline);
-            border-radius: 20px;
-            padding: 18px 20px;
-            min-height: 116px;
+        .col-log {
+            flex: 1 1 340px;
+            min-width: 0;
             display: flex;
             flex-direction: column;
-            justify-content: center;
             gap: 14px;
-            text-align: left;
-            backdrop-filter: blur(16px);
-            -webkit-backdrop-filter: blur(16px);
-            box-shadow: 0 20px 50px -24px rgba(0, 0, 0, 0.7);
-            transition: border-color 0.4s ease;
-        }
-        body:has(.orb-container.hablando) .subtitles-box,
-        body:has(.orb-container.escuchando) .subtitles-box {
-            border-color: color-mix(in srgb, var(--state-b) 30%, var(--hairline));
         }
 
-        .subtitle-line {
+        /* ===== Estado ===== */
+        .status .eyebrow {
+            font-size: 10.5px;
+            letter-spacing: 0.24em;
+        }
+
+        .status-row {
             display: flex;
-            align-items: flex-start;
-            gap: 11px;
-            font-size: 14px;
-            line-height: 1.55;
+            flex-wrap: wrap;
+            align-items: baseline;
+            gap: 6px 18px;
+            margin-top: 6px;
         }
 
-        .subtitle-tag {
-            font-size: 9.5px;
-            font-weight: 700;
-            letter-spacing: 0.6px;
-            padding: 3px 8px;
-            border-radius: 7px;
+        .status-word {
+            font-size: clamp(34px, 6.6cqi, 64px);
+            font-weight: 500;
+            letter-spacing: -0.035em;
+            line-height: 0.95;
             text-transform: uppercase;
-            flex-shrink: 0;
-            margin-top: 2px;
         }
 
-        .tag-user {
-            color: #ffb28a;
-            background: rgba(255, 122, 61, 0.14);
-            border: 1px solid rgba(255, 122, 61, 0.28);
+        .status-meta {
+            font-family: var(--mono);
+            font-size: 12px;
+            letter-spacing: 0.14em;
+            color: var(--ink-2);
         }
 
-        .tag-bot {
-            color: #7dd3fc;
-            background: rgba(56, 189, 248, 0.14);
-            border: 1px solid rgba(56, 189, 248, 0.28);
+        /* ===== Onda de audio ===== */
+        .wave {
+            display: flex;
+            align-items: center;
+            gap: 3px;
+            height: clamp(104px, 26cqi, 190px);
+            width: 100%;
         }
 
-        .subtitle-text {
-            color: var(--text-primary);
-            word-break: break-word;
-        }
-        .subtitle-text.empty {
-            color: var(--text-muted);
-            font-style: italic;
+        .wave i {
+            flex: 1 1 0;
+            min-width: 2px;
+            height: 6%;
+            background: oklch(0.72 0.13 45 / 0.35);
+            display: block;
         }
 
         /* ===== Controles ===== */
-        .controls {
+        .actions {
             display: flex;
-            gap: 10px;
             flex-wrap: wrap;
-            justify-content: center;
+            align-items: center;
+            gap: 12px 26px;
         }
 
-        .btn-control {
-            background: var(--surface);
-            border: 1px solid var(--hairline);
-            color: var(--text-soft);
-            padding: 10px 18px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 600;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: inline-flex;
+        .btn-primary {
+            flex: 0 1 260px;
+            min-height: 56px;
+            padding: 0 26px;
+            background: var(--accent);
+            color: #14100d;
+            font-family: var(--mono);
+            font-size: 12.5px;
+            font-weight: 500;
+            letter-spacing: 0.2em;
+            display: flex;
             align-items: center;
-            gap: 7px;
-            backdrop-filter: blur(10px);
+            justify-content: space-between;
+            gap: 16px;
+            transition: background 0.15s ease;
         }
-        .btn-control:hover {
-            color: var(--text-primary);
-            border-color: var(--hairline-strong);
-            background: var(--surface-strong);
-            transform: translateY(-1px);
+
+        .btn-primary:hover { background: var(--accent-hi); }
+        .btn-primary .btn-glyph { font-size: 15px; }
+
+        .btn-secondary-group {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px 22px;
+            font-family: var(--mono);
+            font-size: 11.5px;
+            letter-spacing: 0.14em;
+            color: var(--ink-2);
         }
-        .btn-control:active { transform: translateY(0); }
-        .btn-control.danger:hover {
-            color: #fca5a5;
-            border-color: rgba(239, 68, 68, 0.45);
-            background: rgba(239, 68, 68, 0.10);
+
+        .btn-line {
+            min-height: 44px;
+            border-bottom: 1px solid oklch(0.93 0.008 80 / 0.25);
+            transition: color 0.15s ease, border-color 0.15s ease;
+        }
+
+        .btn-line:hover {
+            color: var(--ink);
+            border-bottom-color: var(--accent);
+        }
+
+        /* ===== Transcripción ===== */
+        .log-head {
+            display: flex;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 16px;
+            font-family: var(--mono);
+            font-size: 10.5px;
+            letter-spacing: 0.24em;
+            text-transform: uppercase;
+            color: var(--ink-3);
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--line);
+        }
+
+        .log { display: block; }
+
+        .log-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 4px 18px;
+            padding: 15px 0;
+            border-bottom: 1px solid var(--line-2);
+        }
+
+        .log-row.is-pending { opacity: 0.55; }
+
+        .log-role {
+            flex: 0 0 92px;
+            font-family: var(--mono);
+            font-size: 10px;
+            letter-spacing: 0.2em;
+            padding-top: 4px;
+        }
+        .log-row.is-tu .log-role { color: var(--accent); }
+        .log-row.is-as .log-role { color: var(--cool); }
+
+        .log-text {
+            flex: 1 1 200px;
+            min-width: 0;
+            font-size: clamp(15px, 1.4cqi, 17px);
+            line-height: 1.5;
+            letter-spacing: -0.005em;
+            text-wrap: pretty;
+            word-break: break-word;
+        }
+        .log-row.is-tu .log-text { color: var(--ink-2); }
+        .log-row.is-as .log-text { color: var(--ink); }
+
+        .log-at {
+            flex: 0 0 auto;
+            font-family: var(--mono);
+            font-size: 10px;
+            color: var(--ink-3);
+            padding-top: 5px;
+        }
+
+        .log-empty {
+            padding: 18px 0;
+            font-family: var(--mono);
+            font-size: 11.5px;
+            line-height: 1.7;
+            color: var(--ink-3);
         }
 
         /* ===== Pie ===== */
-        footer {
-            width: 100%;
-            max-width: 560px;
-            text-align: center;
-            font-size: 11px;
-            font-weight: 500;
-            letter-spacing: 0.3px;
-            color: var(--text-muted);
-            padding-top: 14px;
+        .ft {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: space-between;
+            gap: 8px 24px;
+            padding-top: clamp(12px, 2cqi, 18px);
+            border-top: 1px solid var(--line);
+            font-family: var(--mono);
+            font-size: 10.5px;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--ink-3);
         }
-        footer span { color: var(--text-soft); }
 
-        /* ===== Toast ===== */
+        /* ===== Toast (plano) ===== */
         .toast {
             position: fixed;
             left: 50%;
-            bottom: calc(22px + env(safe-area-inset-bottom));
-            transform: translate(-50%, 20px);
-            background: rgba(20, 24, 38, 0.92);
-            color: #f1f5f9;
-            padding: 11px 20px;
-            border-radius: 999px;
-            font-size: 12px;
-            font-weight: 500;
-            box-shadow: 0 12px 34px rgba(0, 0, 0, 0.5);
-            border: 1px solid var(--hairline-strong);
-            backdrop-filter: blur(12px);
+            bottom: calc(24px + env(safe-area-inset-bottom));
+            transform: translate(-50%, 10px);
+            background: #14100d;
+            color: var(--ink);
+            border: 1px solid var(--line);
+            font-family: var(--mono);
+            font-size: 11px;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            padding: 10px 18px;
             opacity: 0;
-            transition: all 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
             pointer-events: none;
+            transition: opacity 0.25s ease, transform 0.25s ease;
             z-index: 100;
         }
-        .toast.show {
-            opacity: 1;
-            transform: translate(-50%, 0);
-        }
-
-        @media (max-width: 380px) {
-            main { gap: 22px; }
-            .subtitles-box { padding: 16px; }
-        }
+        .toast.show { opacity: 1; transform: translate(-50%, 0); }
 
         @media (prefers-reduced-motion: reduce) {
-            .ambient span, .orb-button, .orb-button::before,
-            .badge-live::before, .orb-ring, .bar { animation: none !important; }
+            .blip { animation: none; }
         }
     </style>
 </head>
 <body>
-    <div class="ambient" aria-hidden="true">
-        <span class="blob-1"></span>
-        <span class="blob-2"></span>
-        <span class="blob-3"></span>
-    </div>
-    <div class="grain" aria-hidden="true"></div>
-
-    <!-- Encabezado -->
-    <header>
-        <div class="brand">
-            <div class="brand-icon">🔥</div>
-            <div class="brand-text">
-                <h1>Asistente de Voz IA</h1>
-                <p>Monitoreo de Incendios Forestales</p>
+    <div class="app">
+        <!-- Cabecera -->
+        <header class="hd">
+            <div class="hd-brand">
+                <span class="hd-bar" aria-hidden="true"></span>
+                <div>
+                    <div class="eyebrow">Monitoreo de incendios forestales</div>
+                    <h1>Asistente de Voz IA</h1>
+                </div>
             </div>
-        </div>
-        <div class="badge-live">EN VIVO</div>
-    </header>
+            <div class="hd-live"><span class="blip" aria-hidden="true"></span>EN VIVO</div>
+        </header>
 
-    <!-- Centro interactivo -->
-    <main>
-        <div class="stage">
-            <span class="status-eyebrow" id="statusEyebrow">En espera</span>
-
-            <div class="orb-container" id="orbContainer">
-                <span class="orb-ring"></span>
-                <span class="orb-ring"></span>
-                <span class="orb-ring"></span>
-                <button class="orb-button" id="orbButton" aria-label="Iniciar o pausar conversación continua">
-                    <span class="orb-icon" id="orbIcon">🎙️</span>
-                    <span class="orb-label" id="orbLabel">Toca para Iniciar</span>
-                    <div class="audio-bars" aria-hidden="true">
-                        <div class="bar"></div>
-                        <div class="bar"></div>
-                        <div class="bar"></div>
-                        <div class="bar"></div>
-                        <div class="bar"></div>
+        <!-- Cuerpo -->
+        <main class="main">
+            <section class="col-main">
+                <div class="status">
+                    <div class="eyebrow">Estado</div>
+                    <div class="status-row">
+                        <div class="status-word" id="statusWord" aria-live="polite">En espera</div>
+                        <div class="status-meta" id="statusMeta">00:00 · TURNO 00 · MICRÓFONO INACTIVO</div>
                     </div>
-                </button>
-            </div>
-        </div>
+                </div>
 
-        <!-- Subtítulos en pantalla -->
-        <div class="subtitles-box">
-            <div class="subtitle-line" id="userSubLine">
-                <span class="subtitle-tag tag-user">Tú</span>
-                <span class="subtitle-text empty" id="userSubText">Esperando que inicies la conversación...</span>
-            </div>
-            <div class="subtitle-line" id="botSubLine">
-                <span class="subtitle-tag tag-bot">Asistente</span>
-                <span class="subtitle-text empty" id="botSubText">Toca el micrófono una vez y habla con naturalidad.</span>
-            </div>
-        </div>
+                <div class="wave" id="wave" aria-hidden="true"></div>
 
-        <!-- Botones de control secundarios -->
-        <div class="controls">
-            <button class="btn-control danger" id="btnPausar">⏹️ Detener conversación</button>
-            <button class="btn-control" id="btnReiniciar">🔄 Reiniciar</button>
-        </div>
-    </main>
+                <div class="actions">
+                    <button class="btn-primary" id="orbButton" aria-pressed="false" aria-label="Iniciar o detener la escucha">
+                        <span id="primaryLabel">INICIAR ESCUCHA</span>
+                        <span class="btn-glyph" id="primaryGlyph">→</span>
+                    </button>
+                    <div class="btn-secondary-group">
+                        <button class="btn-line" id="btnPausar">DETENER CONVERSACIÓN</button>
+                        <button class="btn-line" id="btnReiniciar">REINICIAR</button>
+                    </div>
+                </div>
+            </section>
 
-    <!-- Footer -->
-    <footer>
-        Conversación continua manos libres · <span>Groq LLM + Speech API</span>
-    </footer>
+            <section class="col-log">
+                <div class="log-head">
+                    <span>Transcripción</span><span id="lineCount">00 INTERVENCIONES</span>
+                </div>
+                <div class="log" id="log"></div>
+            </section>
+        </main>
 
-    <!-- Toast de notificaciones -->
+        <!-- Pie -->
+        <footer class="ft">
+            <span>Conversación continua manos libres</span>
+            <span>Groq LLM + Speech API</span>
+        </footer>
+    </div>
+
     <div class="toast" id="toast"></div>
 
     <script>
-        // Variable JS configurable para la URL del backend
+        // ===== Configuración =====
         const BACKEND_URL = (window.location.origin && window.location.origin.startsWith("http"))
             ? window.location.origin
             : "https://asistentevozia.onrender.com";
 
-        // Elementos del DOM
-        const orbContainer = document.getElementById("orbContainer");
-        const orbButton = document.getElementById("orbButton");
-        const orbIcon = document.getElementById("orbIcon");
-        const orbLabel = document.getElementById("orbLabel");
-        const statusEyebrow = document.getElementById("statusEyebrow");
-        const userSubText = document.getElementById("userSubText");
-        const botSubText = document.getElementById("botSubText");
-        const btnPausar = document.getElementById("btnPausar");
-        const btnReiniciar = document.getElementById("btnReiniciar");
-        const toastEl = document.getElementById("toast");
+        const ACCENT = "oklch(0.72 0.13 45)";
+        const COOL = "oklch(0.72 0.13 200)";
+        const prefersReducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
-        // Estados del asistente
+        // ===== Elementos =====
+        const el = {
+            wave: document.getElementById("wave"),
+            statusWord: document.getElementById("statusWord"),
+            statusMeta: document.getElementById("statusMeta"),
+            primaryBtn: document.getElementById("orbButton"),
+            primaryLabel: document.getElementById("primaryLabel"),
+            primaryGlyph: document.getElementById("primaryGlyph"),
+            log: document.getElementById("log"),
+            lineCount: document.getElementById("lineCount"),
+            btnPausar: document.getElementById("btnPausar"),
+            btnReiniciar: document.getElementById("btnReiniciar"),
+            toast: document.getElementById("toast"),
+        };
+
+        // ===== Estado =====
         const ESTADOS = {
             INACTIVO: "inactivo",
             ESCUCHANDO: "escuchando",
             PENSANDO: "pensando",
             HABLANDO: "hablando"
         };
-        const EYEBROW_TEXTO = {
+        const STATUS_WORD = {
             inactivo: "En espera",
             escuchando: "Escuchando",
             pensando: "Procesando",
             hablando: "Respondiendo"
         };
+        const STATUS_META = {
+            inactivo: "MICRÓFONO INACTIVO",
+            escuchando: "CAPTURA DE AUDIO EN CURSO",
+            pensando: "CONSULTA AL MODELO",
+            hablando: "SÍNTESIS DE VOZ"
+        };
+
         let estadoActual = ESTADOS.INACTIVO;
         let conversacionActiva = false;
+        let elapsedSeconds = 0;
+        let turnCount = 0;
+        let clockInterval = null;
+        let transcript = [];        // { role: 'tu' | 'asistente', text, at }
+        let pendingUserText = "";
 
         // Reconocimiento de voz (SpeechRecognition)
         const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -700,52 +472,125 @@
         let speechTimeout = null;
         let ttsFallbackTimer = null;
 
-        function mostrarToast(msg) {
-            toastEl.textContent = msg;
-            toastEl.classList.add("show");
-            setTimeout(() => toastEl.classList.remove("show"), 3000);
+        // ===== Utilidades de vista =====
+        function stamp() {
+            const s = elapsedSeconds;
+            return String(Math.floor(s / 60)).padStart(2, "0") + ":" + String(s % 60).padStart(2, "0");
         }
 
-        // Actualizar visualmente el orbe
-        function setEstado(nuevoEstado, textoPersonalizado = "") {
-            estadoActual = nuevoEstado;
-            orbContainer.classList.remove("escuchando", "pensando", "hablando");
-            statusEyebrow.textContent = EYEBROW_TEXTO[nuevoEstado] || EYEBROW_TEXTO.inactivo;
+        function escapeHtml(str) {
+            return String(str).replace(/[&<>"]/g, c => ({
+                "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;"
+            }[c]));
+        }
 
-            switch (nuevoEstado) {
-                case ESTADOS.ESCUCHANDO:
-                    orbContainer.classList.add("escuchando");
-                    orbIcon.textContent = "👂";
-                    orbLabel.textContent = textoPersonalizado || "Te escucho...";
-                    break;
-                case ESTADOS.PENSANDO:
-                    orbContainer.classList.add("pensando");
-                    orbIcon.textContent = "⚡";
-                    orbLabel.textContent = textoPersonalizado || "Consultando...";
-                    break;
-                case ESTADOS.HABLANDO:
-                    orbContainer.classList.add("hablando");
-                    orbIcon.textContent = "🔊";
-                    orbLabel.textContent = textoPersonalizado || "Respondiendo...";
-                    break;
-                case ESTADOS.INACTIVO:
-                default:
-                    orbIcon.textContent = "🎙️";
-                    orbLabel.textContent = "Toca para Iniciar";
-                    break;
+        function mostrarToast(msg) {
+            el.toast.textContent = msg;
+            el.toast.classList.add("show");
+            setTimeout(() => el.toast.classList.remove("show"), 3000);
+        }
+
+        function refreshStatus() {
+            el.statusWord.textContent = STATUS_WORD[estadoActual] || STATUS_WORD.inactivo;
+            el.statusMeta.textContent = stamp()
+                + " · TURNO " + String(turnCount).padStart(2, "0")
+                + " · " + (STATUS_META[estadoActual] || STATUS_META.inactivo);
+            el.primaryLabel.textContent = conversacionActiva ? "ESCUCHA ACTIVA" : "INICIAR ESCUCHA";
+            el.primaryGlyph.textContent = conversacionActiva ? "●" : "→";
+            el.primaryBtn.setAttribute("aria-pressed", conversacionActiva ? "true" : "false");
+        }
+
+        function renderTranscript() {
+            el.lineCount.textContent = String(transcript.length).padStart(2, "0") + " INTERVENCIONES";
+
+            const lines = transcript.slice();
+            if (pendingUserText) {
+                lines.push({ role: "tu", text: pendingUserText, at: stamp(), pending: true });
+            }
+
+            if (lines.length === 0) {
+                el.log.innerHTML = '<div class="log-empty">Sin registro. Inicia la escucha para<br>comenzar la conversación continua.</div>';
+                return;
+            }
+
+            const last = lines.slice(-4);
+            el.log.innerHTML = last.map((l, i) => {
+                const role = l.role === "tu" ? "TÚ" : "ASISTENTE";
+                const roleClass = l.role === "tu" ? "is-tu" : "is-as";
+                const pendingClass = l.pending ? " is-pending" : "";
+                const live = (i === last.length - 1) ? ' aria-live="polite"' : "";
+                return '<div class="log-row ' + roleClass + pendingClass + '">'
+                    + '<div class="log-role">' + role + '</div>'
+                    + '<div class="log-text"' + live + '>' + escapeHtml(l.text) + '</div>'
+                    + '<div class="log-at">' + l.at + '</div>'
+                    + '</div>';
+            }).join("");
+        }
+
+        function pushLine(role, text) {
+            transcript.push({ role, text, at: stamp() });
+            renderTranscript();
+        }
+
+        // Actualiza el estado del asistente (clase lógica + vista)
+        function setEstado(nuevoEstado) {
+            estadoActual = nuevoEstado;
+            refreshStatus();
+        }
+
+        // ===== Onda de audio ===== (un solo requestAnimationFrame escribe el DOM directamente)
+        const bars = [];
+        (function buildWave() {
+            for (let i = 0; i < 56; i++) {
+                const b = document.createElement("i");
+                el.wave.appendChild(b);
+                bars.push(b);
+            }
+        })();
+
+        let waveT = 0;
+        function paintWave() {
+            const cfg = ({
+                inactivo:   { amp: 0.04, base: 4,  alpha: 0.28, speed: 0.012, hue: null },
+                escuchando: { amp: 0.82, base: 6,  alpha: 1.00, speed: 0.075, hue: null },
+                pensando:   { amp: 0.16, base: 8,  alpha: 0.50, speed: 0.030, hue: null },
+                hablando:   { amp: 0.55, base: 10, alpha: 0.85, speed: 0.050, hue: COOL }
+            })[estadoActual] || { amp: 0.04, base: 4, alpha: 0.28, speed: 0.012, hue: null };
+
+            waveT += 1;
+            const n = bars.length;
+            for (let i = 0; i < n; i++) {
+                const x = i / n;
+                const t = waveT * cfg.speed;
+                const env = Math.pow(Math.sin(Math.PI * x), 0.7);
+                const w = 0.5 + 0.5 * Math.sin(t + i * 0.42) * Math.sin(t * 0.53 + i * 0.11);
+                const jitter = estadoActual === ESTADOS.ESCUCHANDO ? 0.35 * Math.random() : 0;
+                const h = cfg.base + cfg.amp * 100 * env * (0.45 * w + jitter);
+                const c = bars[i];
+                c.style.height = Math.max(2, Math.min(100, h)) + "%";
+                c.style.background = (cfg.hue || ACCENT).replace(")", " / " + cfg.alpha.toFixed(2) + ")");
             }
         }
 
-        // Inicializar Reconocimiento de Voz
+        if (prefersReducedMotion) {
+            bars.forEach(b => {
+                b.style.height = "6%";
+                b.style.background = ACCENT.replace(")", " / 0.30)");
+            });
+        } else {
+            (function loop() { paintWave(); requestAnimationFrame(loop); })();
+        }
+
+        // ===== Reconocimiento de voz =====
         function initRecognition() {
             if (!SpeechRecognition) {
-                mostrarToast("Tu navegador no soporta Reconocimiento de Voz. Usa Google Chrome o Edge.");
+                mostrarToast("Tu navegador no soporta Reconocimiento de Voz. Usa Chrome o Edge.");
                 return null;
             }
 
             const rec = new SpeechRecognition();
             rec.lang = "es-CO";
-            rec.continuous = false; // Manejado en ciclo continuo para máxima compatibilidad
+            rec.continuous = false; // Ciclo continuo manejado manualmente para máxima compatibilidad
             rec.interimResults = true;
             rec.maxAlternatives = 1;
 
@@ -769,14 +614,14 @@
                     }
                 }
 
-                const transcriptActual = finalTranscript || interimTranscript;
-                if (transcriptActual.trim()) {
-                    userSubText.textContent = `"${transcriptActual.trim()}"`;
-                    userSubText.classList.remove("empty");
+                const transcriptActual = (finalTranscript || interimTranscript).trim();
+                if (transcriptActual) {
+                    pendingUserText = transcriptActual;
+                    renderTranscript();
                 }
 
                 // Debounce de silencio: cuando el usuario termina de hablar
-                if (transcriptActual.trim().length > 2) {
+                if (transcriptActual.length > 2) {
                     clearTimeout(speechTimeout);
                     speechTimeout = setTimeout(() => {
                         try { rec.stop(); } catch (e) {}
@@ -789,7 +634,6 @@
                 if (event.error !== "no-speech") {
                     console.warn("SpeechRecognition error:", event.error);
                 }
-                // Si la conversación sigue activa y toca escuchar, reintentar
                 if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO) {
                     setTimeout(() => iniciarReconocimientoVoz(), 400);
                 }
@@ -806,10 +650,11 @@
 
                 const pregunta = finalTranscript.trim();
                 if (pregunta.length > 1) {
-                    // Pregunta válida detectada, enviar al backend
                     enviarPreguntaAlBackend(pregunta);
                 } else {
-                    // Silencio o sin audio: reanudar escucha de inmediato si sigue activa
+                    // Silencio o sin audio: reanudar escucha de inmediato
+                    pendingUserText = "";
+                    renderTranscript();
                     if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO) {
                         setTimeout(() => iniciarReconocimientoVoz(), 250);
                     }
@@ -819,21 +664,15 @@
             return rec;
         }
 
-        // Inicia el reconocimiento de forma segura
         function iniciarReconocimientoVoz() {
             if (!conversacionActiva) return;
-            // No iniciar si el bot aún está hablando o procesando
             if (estadoActual === ESTADOS.HABLANDO || estadoActual === ESTADOS.PENSANDO) return;
 
             setEstado(ESTADOS.ESCUCHANDO);
 
             try {
-                if (!recognition) {
-                    recognition = initRecognition();
-                }
-                if (recognition && !isRecognizing) {
-                    recognition.start();
-                }
+                if (!recognition) recognition = initRecognition();
+                if (recognition && !isRecognizing) recognition.start();
             } catch (err) {
                 console.warn("Aviso al iniciar recognition:", err);
                 try { recognition.abort(); } catch (e) {}
@@ -845,11 +684,11 @@
             }
         }
 
-        // Enviar pregunta transcrita a POST /preguntar
+        // ===== Backend =====
         async function enviarPreguntaAlBackend(texto) {
+            pendingUserText = "";
+            pushLine("tu", texto);
             setEstado(ESTADOS.PENSANDO);
-            botSubText.textContent = "Procesando con Groq...";
-            botSubText.classList.add("empty");
 
             try {
                 const response = await fetch(`${BACKEND_URL}/preguntar`, {
@@ -865,22 +704,20 @@
                 const data = await response.json();
                 const respuesta = data.respuesta || "No recibí respuesta del asistente.";
 
-                botSubText.textContent = respuesta;
-                botSubText.classList.remove("empty");
-
-                // Reproducir respuesta en voz alta
+                turnCount += 1;
+                pushLine("asistente", respuesta);
+                refreshStatus();
                 reproducirVoz(respuesta);
 
             } catch (error) {
                 console.error("Error al consultar backend:", error);
                 const errorMsg = "Disculpa, hubo un problema de conexión con el servidor.";
-                botSubText.textContent = errorMsg;
-                botSubText.classList.remove("empty");
+                pushLine("asistente", errorMsg);
                 reproducirVoz(errorMsg);
             }
         }
 
-        // Síntesis de voz (Text-to-Speech) con protección anti-bloqueo
+        // ===== Síntesis de voz (Text-to-Speech) con protección anti-bloqueo =====
         function reproducirVoz(texto) {
             if (!("speechSynthesis" in window)) {
                 mostrarToast("Tu navegador no soporta síntesis de voz.");
@@ -888,7 +725,6 @@
                 return;
             }
 
-            // Si el reconocimiento estaba activo, pararlo para evitar captar el propio altavoz
             if (recognition) {
                 try { recognition.abort(); } catch (e) {}
             }
@@ -897,24 +733,19 @@
             setEstado(ESTADOS.HABLANDO);
 
             const utterance = new SpeechSynthesisUtterance(texto);
-            // Guardar referencia global para evitar que el Garbage Collector de Chrome mate el evento onend
-            window.activeUtterance = utterance;
+            window.activeUtterance = utterance; // Evita que el GC de Chrome mate el evento onend
 
             utterance.lang = "es-CO";
             utterance.rate = 1.05;
             utterance.pitch = 1.0;
 
-            // Selección de voz en español
             const voces = window.speechSynthesis.getVoices();
             const vozEspanol = voces.find(v => v.lang.startsWith("es") && (v.name.includes("Natural") || v.name.includes("Google") || v.name.includes("Sabina") || v.name.includes("Helena")))
                             || voces.find(v => v.lang.startsWith("es"));
-            if (vozEspanol) {
-                utterance.voice = vozEspanol;
-            }
+            if (vozEspanol) utterance.voice = vozEspanol;
 
             let habladoTerminado = false;
 
-            // Función central que finaliza la locución y reactiva la escucha continua
             function finalizarLocucionYEscuchar() {
                 if (habladoTerminado) return;
                 habladoTerminado = true;
@@ -927,10 +758,7 @@
                     return;
                 }
 
-                // Cambiar inmediatamente a estado ESCUCHANDO
                 setEstado(ESTADOS.ESCUCHANDO);
-
-                // Esperar 350ms para que el eco del altavoz se disipe por completo
                 setTimeout(() => {
                     if (conversacionActiva && estadoActual === ESTADOS.ESCUCHANDO) {
                         iniciarReconocimientoVoz();
@@ -938,18 +766,13 @@
                 }, 350);
             }
 
-            // Eventos estándar de fin y error
-            utterance.onend = () => {
-                finalizarLocucionYEscuchar();
-            };
-
+            utterance.onend = () => finalizarLocucionYEscuchar();
             utterance.onerror = (e) => {
                 console.warn("SpeechSynthesis error:", e);
                 finalizarLocucionYEscuchar();
             };
 
-            // Temporizador de seguridad (Fallback): si por bug de Chrome 'onend' no se dispara,
-            // forzar la reactivación tras el tiempo estimado de lectura
+            // Fallback: si el bug de Chrome impide 'onend', forzar reactivación
             const duracionEstimadaMs = Math.max(3000, Math.ceil(texto.length * 85) + 1200);
             ttsFallbackTimer = setTimeout(() => {
                 if (!habladoTerminado) {
@@ -961,43 +784,49 @@
             window.speechSynthesis.speak(utterance);
         }
 
-        // Cargar voces al inicio
         if ("speechSynthesis" in window) {
             window.speechSynthesis.onvoiceschanged = () => window.speechSynthesis.getVoices();
         }
 
-        // Iniciar el ciclo de conversación continuo
+        // ===== Ciclo de conversación =====
         function iniciarConversacion() {
-            if (!recognition) {
-                recognition = initRecognition();
-            }
+            if (!recognition) recognition = initRecognition();
             conversacionActiva = true;
+
+            if (!clockInterval) {
+                clockInterval = setInterval(() => {
+                    elapsedSeconds += 1;
+                    refreshStatus();
+                }, 1000);
+            }
+
             window.speechSynthesis.cancel();
+            refreshStatus();
             iniciarReconocimientoVoz();
-            mostrarToast("Conversación iniciada. Habla cuando quieras.");
+            mostrarToast("Escucha iniciada. Habla cuando quieras.");
         }
 
-        // Detener conversación
         function detenerConversacion() {
             conversacionActiva = false;
             clearTimeout(ttsFallbackTimer);
             clearTimeout(speechTimeout);
+            clearInterval(clockInterval);
+            clockInterval = null;
             window.speechSynthesis.cancel();
             window.activeUtterance = null;
 
             if (recognition) {
                 try { recognition.abort(); } catch (e) {}
             }
+
+            pendingUserText = "";
             setEstado(ESTADOS.INACTIVO);
-            userSubText.textContent = "Conversación pausada.";
-            userSubText.classList.add("empty");
-            botSubText.textContent = "Toca el botón central para reanudar.";
-            botSubText.classList.add("empty");
+            pushLine("asistente", "Conversación pausada. Toca INICIAR ESCUCHA para reanudar.");
             mostrarToast("Conversación detenida.");
         }
 
-        // Eventos
-        orbButton.addEventListener("click", () => {
+        // ===== Eventos =====
+        el.primaryBtn.addEventListener("click", () => {
             if (!conversacionActiva) {
                 iniciarConversacion();
             } else {
@@ -1005,14 +834,22 @@
             }
         });
 
-        btnPausar.addEventListener("click", detenerConversacion);
+        el.btnPausar.addEventListener("click", detenerConversacion);
 
-        btnReiniciar.addEventListener("click", () => {
+        el.btnReiniciar.addEventListener("click", () => {
             detenerConversacion();
-            userSubText.textContent = "Esperando que inicies la conversación...";
-            botSubText.textContent = "Toca el micrófono una vez y habla con naturalidad.";
+            transcript = [];
+            pendingUserText = "";
+            elapsedSeconds = 0;
+            turnCount = 0;
+            renderTranscript();
+            refreshStatus();
             setTimeout(() => iniciarConversacion(), 300);
         });
+
+        // ===== Arranque =====
+        refreshStatus();
+        renderTranscript();
     </script>
 </body>
 </html>
