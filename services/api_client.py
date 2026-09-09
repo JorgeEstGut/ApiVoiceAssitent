@@ -357,3 +357,95 @@ def consultar_eventos_dispositivo(dispositivo_id: int = None) -> list:
     except requests.exceptions.RequestException as e:
         logger.error(f"Error en consultar_eventos_dispositivo: {e}")
         return []
+
+
+def desactivar_alertas(sensor_id: int = None, limite: int = None, minutos_atras: int = None, todas: bool = True) -> dict:
+    """
+    Desactiva (marca como resueltas) las alertas ambientales activas en el sistema.
+    Permite desactivar:
+    - Todas las alertas activas (por defecto).
+    - Alertas de un sensor específico (sensor_id=1 para gas MQ-2, etc.).
+    - Las últimas N alertas activas (ej. limite=5).
+    - Alertas generadas en los últimos N minutos (ej. minutos_atras=60 para 'hace una hora').
+    """
+    url_get = f"{Config.API_ORIGINAL_URL}/alertas"
+    params = {"estado": "activa", "per_page": 100, "page": 1}
+    if sensor_id is not None:
+        params["sensor_id"] = sensor_id
+
+    try:
+        resp = requests.get(url_get, params=params, timeout=Config.API_TIMEOUT)
+        if resp.status_code != 200:
+            return {"error": f"Error HTTP {resp.status_code} al consultar alertas activas."}
+
+        data = resp.json().get("data", {})
+        alertas_activas = data.get("items", [])
+
+        if not alertas_activas:
+            sensor_str = f" para el sensor {sensor_id}" if sensor_id else ""
+            return {
+                "alertas_desactivadas": 0,
+                "mensaje": f"No hay alertas activas en el sistema{sensor_str}."
+            }
+
+        # Filtrar por tiempo si se especificó minutos_atras
+        if minutos_atras is not None and minutos_atras > 0:
+            from datetime import datetime, timezone
+            ahora = datetime.now(timezone.utc)
+            filtradas = []
+            for a in alertas_activas:
+                ts_str = a.get("timestamp")
+                if ts_str:
+                    try:
+                        ts_dt = datetime.fromisoformat(ts_str)
+                        if ts_dt.tzinfo is None:
+                            ts_dt = ts_dt.replace(tzinfo=timezone.utc)
+                        minutos_dif = (ahora - ts_dt.astimezone(timezone.utc)).total_seconds() / 60
+                        if minutos_dif <= minutos_atras:
+                            filtradas.append(a)
+                    except Exception:
+                        filtradas.append(a)
+                else:
+                    filtradas.append(a)
+            alertas_activas = filtradas
+
+        # Filtrar por límite si se especificó (ej. 'las 5 últimas')
+        if limite is not None and limite > 0:
+            alertas_activas = alertas_activas[:limite]
+
+        if not alertas_activas:
+            return {
+                "alertas_desactivadas": 0,
+                "mensaje": "No se encontraron alertas activas que cumplan con el criterio especificado."
+            }
+
+        desactivadas_ids = []
+        fallidas_ids = []
+
+        for a in alertas_activas:
+            a_id = a.get("id")
+            if not a_id:
+                continue
+            url_put = f"{Config.API_ORIGINAL_URL}/alertas/{a_id}"
+            try:
+                put_resp = requests.put(url_put, json={"estado": "resuelta"}, timeout=Config.API_TIMEOUT)
+                if put_resp.status_code == 200:
+                    desactivadas_ids.append(a_id)
+                else:
+                    fallidas_ids.append(a_id)
+            except requests.exceptions.RequestException:
+                fallidas_ids.append(a_id)
+
+        total_desactivadas = len(desactivadas_ids)
+        sensor_str = f" del sensor {sensor_id}" if sensor_id else ""
+        return {
+            "alertas_desactivadas": total_desactivadas,
+            "ids_resueltos": desactivadas_ids,
+            "sensor_id": sensor_id,
+            "mensaje": f"Se desactivaron exitosamente {total_desactivadas} alerta(s){sensor_str}."
+        }
+
+    except requests.exceptions.RequestException as e:
+        logger.error(f"Error en desactivar_alertas: {e}")
+        return {"error": "No se pudo conectar con el servidor para desactivar las alertas."}
+

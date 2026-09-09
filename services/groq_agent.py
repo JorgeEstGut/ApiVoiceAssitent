@@ -2,6 +2,7 @@
 
 import json
 import logging
+import time
 import requests
 from config import Config
 from services.api_client import (
@@ -11,6 +12,7 @@ from services.api_client import (
     obtener_promedio_por_fecha,
     consultar_total_lecturas,
     consultar_alertas,
+    desactivar_alertas,
     consultar_umbrales,
     consultar_dispositivos,
     consultar_ubicaciones,
@@ -28,6 +30,7 @@ MAPA_TOOLS = {
     "obtener_promedio_por_fecha": obtener_promedio_por_fecha,
     "consultar_total_lecturas": consultar_total_lecturas,
     "consultar_alertas": consultar_alertas,
+    "desactivar_alertas": desactivar_alertas,
     "consultar_umbrales": consultar_umbrales,
     "consultar_dispositivos": consultar_dispositivos,
     "consultar_ubicaciones": consultar_ubicaciones,
@@ -52,6 +55,35 @@ TOOLS_SCHEMA = [
                     "sensor_id": {
                         "type": ["integer", "null"],
                         "description": "ID numérico del sensor para filtrar sus alertas (opcional o null)."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "desactivar_alertas",
+            "description": "Desactiva (marca como resueltas) las alertas ambientales activas en el sistema. Úsala cuando el usuario ordene desactivar, apagar o resolver alertas (por ejemplo: 'desactiva todas las alertas', 'desactiva las alertas del sensor de gas', 'desactiva las 5 últimas alertas', 'apaga las alertas de hace una hora').",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "todas": {
+                        "type": ["boolean", "null"],
+                        "description": "True para desactivar todas las alertas activas."
+                    },
+                    "sensor_id": {
+                        "type": ["integer", "null"],
+                        "description": "ID numérico del sensor si se pide desactivar alertas de un sensor específico (1=Gas MQ-2, 2=Calidad de aire MQ-135, 3=Temp/Humedad BME680)."
+                    },
+                    "limite": {
+                        "type": ["integer", "null"],
+                        "description": "Cantidad máxima de alertas a desactivar (ejemplo: 5 para 'desactiva las 5 últimas alertas')."
+                    },
+                    "minutos_atras": {
+                        "type": ["integer", "null"],
+                        "description": "Filtro de tiempo en minutos hacia atrás. Ejemplo: 60 para 'hace una hora', 30 para 'últimos 30 minutos', 120 para 'hace 2 horas'."
                     }
                 },
                 "required": []
@@ -220,6 +252,7 @@ TOOLS_SCHEMA = [
 SYSTEM_PROMPT = """Eres el Asistente de Voz Inteligente del Sistema de Detección Temprana de Incendios Forestales.
 Tienes acceso directo y completo a toda la base de datos y endpoints de la API:
 - Para preguntas sobre alertas (activas, resueltas, cantidad de alertas o peligro): usa siempre 'consultar_alertas'.
+- Para desactivar, apagar o resolver alertas (todas, de un sensor, las últimas N, o de un periodo de tiempo): usa siempre 'desactivar_alertas'.
 - Para preguntas sobre cantidad de lecturas o conteos en el sistema o por sensor: usa siempre 'consultar_total_lecturas'.
 - Para preguntas sobre qué sensores hay o su estado: usa 'listar_sensores'.
 - Para mediciones actuales: usa 'obtener_ultimo_valor'.
@@ -272,6 +305,11 @@ def procesar_pregunta_voz(texto_pregunta: str) -> tuple[str, list]:
 
         try:
             resp = requests.post(Config.GROQ_URL, headers=headers, json=payload, timeout=25)
+            if resp.status_code == 429:
+                logger.warning("Rate limit 429 alcanzado en Groq. Esperando 3.5 segundos para reintentar...")
+                time.sleep(3.5)
+                resp = requests.post(Config.GROQ_URL, headers=headers, json=payload, timeout=25)
+
             if resp.status_code >= 400:
                 logger.error(f"Error de Groq API HTTP {resp.status_code}: {resp.text}")
                 return "Disculpa, hubo un problema al consultar el modelo de inteligencia artificial.", tools_usadas
